@@ -1,10 +1,10 @@
 #pragma once
 
-#include "scamp_args.h"
-
 #include <vector>
 
 namespace SCAMP {
+
+struct SCAMPArgs;
 
 // SCAMP library interface
 void do_SCAMP(SCAMPArgs *args, const std::vector<int> &devices,
