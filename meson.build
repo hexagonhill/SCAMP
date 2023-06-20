@@ -1,6 +1,7 @@
 project('scamp','cpp',default_options : ['default_library=static'])
 
 eigen = dependency('eigen', required : false)
+thread = dependency('threads')
 
 if not eigen.found()
 	eigen = dependency('eigen3')
@@ -27,7 +28,8 @@ scampInc = include_directories('src')
 
 
 scampDep = [
-  eigen
+  eigen,
+  thread
 ]
 
 cppArgs = ['-march=native']
