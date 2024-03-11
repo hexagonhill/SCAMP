@@ -105,6 +105,7 @@ class Tile {
   const double *normsb() const { return norms_B_.get(); }
   const float *thresholds_A() const { return thresholds_A_.get(); }
   const float *thresholds_B() const { return thresholds_B_.get(); }
+
   unsigned long long int *get_mutable_a_dev_length() {
     return profile_a_dev_length_;
   }
