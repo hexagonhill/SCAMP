@@ -1,5 +1,4 @@
 #include "scamp_interface.h"
-#include "scamp_args.h"
 
 #include "core/SCAMP.h"
 #include "scamp_exception.h"
