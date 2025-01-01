@@ -111,6 +111,7 @@ struct OptionalArgs {
 
   double threshold;
   int num_extra_operands;
+  double noise_var_k;
 };
 
 // Defines the execution environment of a SCAMP tile

@@ -298,7 +298,7 @@ FORCE_INLINE inline void handle_row_flatnoise(const SCAMPKernelInputArgs<double>
     update_rowwise<DIST_TYPE, PROFILE_DATA_TYPE, EIGEN_CORR_TYPE, PROFILE_TYPE>(
         args, info, corr, profile_B);
   }
-  //std::cout << corr << '\n';
+
   cov += dfa * args.dgb[info.row];
   cov += dga * args.dfb[info.row];
 }

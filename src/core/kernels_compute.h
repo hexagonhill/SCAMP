@@ -409,45 +409,166 @@ __device__ inline void update_cols(
 // you are sure you know what you are doing as it is templated and used by ALL
 // profile computations.
 //////////////////////////////////////////////////////////
-template <int iter, typename DATA_TYPE, typename PROFILE_DATA_TYPE,
-          typename ACCUM_TYPE, typename DISTANCE_TYPE, bool COMPUTE_ROWS,
-          bool COMPUTE_COLS, SCAMPProfileType PROFILE_TYPE>
-__device__ inline FORCE_INLINE void do_row(
+template<int iter, typename DATA_TYPE, typename PROFILE_DATA_TYPE,
+  typename ACCUM_TYPE, typename DISTANCE_TYPE, bool COMPUTE_ROWS,
+  bool COMPUTE_COLS, SCAMPProfileType PROFILE_TYPE, RowAlgorithm row_algo > struct do_row;
+
+template<int iter, typename PROFILE_DATA_TYPE,
+typename ACCUM_TYPE, typename DISTANCE_TYPE, bool COMPUTE_ROWS,
+bool COMPUTE_COLS, SCAMPProfileType PROFILE_TYPE> struct do_row<iter,float,PROFILE_DATA_TYPE,
+ACCUM_TYPE, DISTANCE_TYPE, COMPUTE_ROWS,
+COMPUTE_COLS,PROFILE_TYPE,RowAlgorithm::FlatNoise>
+{
+  __device__ inline FORCE_INLINE static void call(
+    SCAMPThreadInfo<ACCUM_TYPE> &info, DISTANCE_TYPE distc[7],
+    const float inormc[7], const float dfc[7], const float dgc[7],
+    const float inormr[4], const float dfr[4], const float dgr[4],
+    const float curr_mp_row_val[4], unsigned int idxc[7],
+    SCAMPSmem<float, PROFILE_DATA_TYPE, PROFILE_TYPE> smem,
+    OptionalArgs args)
+  {
+    DISTANCE_TYPE dist[4];
+    float noise_var_k = args.noise_var_k;
+    const float mins[4] = {
+      fminf(inormc[iter],inormr[iter]),
+      fminf(inormc[iter + 1],inormr[iter]),
+      fminf(inormc[iter + 2],inormr[iter]),
+      fminf(inormc[iter + 3],inormr[iter])
+    };
+    
+    const float mins2[4] = {
+      mins[0] * mins[0],
+      mins[1] * mins[1],
+      mins[2] * mins[2],
+      mins[3] * mins[3]
+    };
+
+    dist[0] = info.cov1 * inormc[iter] * inormr[iter] + noise_var_k * mins2[0];
+    dist[1] = info.cov2 * inormc[iter + 1] * inormr[iter] + noise_var_k * mins2[1];
+    dist[2] = info.cov3 * inormc[iter + 2] * inormr[iter] + noise_var_k * mins2[2];
+    dist[3] = info.cov4 * inormc[iter + 3] * inormr[iter] + noise_var_k * mins2[3];
+    // Compute the next covariance values and update our registers for the next
+    // iteration
+    info.cov1 = info.cov1 + dfc[iter] * dgr[iter] + dgc[iter] * dfr[iter];
+    info.cov2 = info.cov2 + dfc[iter + 1] * dgr[iter] + dgc[iter + 1] * dfr[iter];
+    info.cov3 = info.cov3 + dfc[iter + 2] * dgr[iter] + dgc[iter + 2] * dfr[iter];
+    info.cov4 = info.cov4 + dfc[iter + 3] * dgr[iter] + dgc[iter + 3] * dfr[iter];
+
+    // Perform any profile-specific distance calculations
+    // Update the column best-so-far values
+    if (COMPUTE_COLS) {
+      merge_to_column<iter, float, PROFILE_DATA_TYPE, ACCUM_TYPE,
+                      DISTANCE_TYPE>(info, smem, distc, dist, idxc, args);
+    }
+
+    // Perform any updates for this tile row and commit to the shared-memory
+    // matrix profile
+    if (COMPUTE_ROWS) {
+      update_row<iter, float, PROFILE_DATA_TYPE, ACCUM_TYPE, DISTANCE_TYPE>(
+          info, smem, dist, curr_mp_row_val[iter], args);
+    }
+  }
+};
+
+template<int iter, typename PROFILE_DATA_TYPE,
+typename ACCUM_TYPE, typename DISTANCE_TYPE, bool COMPUTE_ROWS,
+bool COMPUTE_COLS, SCAMPProfileType PROFILE_TYPE> struct do_row<iter,double,PROFILE_DATA_TYPE,
+ACCUM_TYPE, DISTANCE_TYPE, COMPUTE_ROWS,
+COMPUTE_COLS,PROFILE_TYPE,RowAlgorithm::FlatNoise>
+{
+  __device__ inline FORCE_INLINE static void call(
+    SCAMPThreadInfo<ACCUM_TYPE> &info, DISTANCE_TYPE distc[7],
+    const double inormc[7], const double dfc[7], const double dgc[7],
+    const double inormr[4], const double dfr[4], const double dgr[4],
+    const float curr_mp_row_val[4], unsigned int idxc[7],
+    SCAMPSmem<double, PROFILE_DATA_TYPE, PROFILE_TYPE> smem,
+    OptionalArgs args)
+  {
+    DISTANCE_TYPE dist[4];
+    double noise_var_k = args.noise_var_k;
+    const double mins[4] = {
+      fmin(inormc[iter],inormr[iter]),
+      fmin(inormc[iter + 1],inormr[iter]),
+      fmin(inormc[iter + 2],inormr[iter]),
+      fmin(inormc[iter + 3],inormr[iter])
+    };
+    
+    const double mins2[4] = {
+      mins[0] * mins[0],
+      mins[1] * mins[1],
+      mins[2] * mins[2],
+      mins[3] * mins[3]
+    };
+
+    dist[0] = info.cov1 * inormc[iter] * inormr[iter] + noise_var_k * mins2[0];
+    dist[1] = info.cov2 * inormc[iter + 1] * inormr[iter] + noise_var_k * mins2[1];
+    dist[2] = info.cov3 * inormc[iter + 2] * inormr[iter] + noise_var_k * mins2[2];
+    dist[3] = info.cov4 * inormc[iter + 3] * inormr[iter] + noise_var_k * mins2[3];
+    // Compute the next covariance values and update our registers for the next
+    // iteration
+    info.cov1 = info.cov1 + dfc[iter] * dgr[iter] + dgc[iter] * dfr[iter];
+    info.cov2 = info.cov2 + dfc[iter + 1] * dgr[iter] + dgc[iter + 1] * dfr[iter];
+    info.cov3 = info.cov3 + dfc[iter + 2] * dgr[iter] + dgc[iter + 2] * dfr[iter];
+    info.cov4 = info.cov4 + dfc[iter + 3] * dgr[iter] + dgc[iter + 3] * dfr[iter];
+
+    // Perform any profile-specific distance calculations
+    // Update the column best-so-far values
+    if (COMPUTE_COLS) {
+      merge_to_column<iter, double, PROFILE_DATA_TYPE, ACCUM_TYPE,
+                      DISTANCE_TYPE>(info, smem, distc, dist, idxc, args);
+    }
+
+    // Perform any updates for this tile row and commit to the shared-memory
+    // matrix profile
+    if (COMPUTE_ROWS) {
+      update_row<iter, double, PROFILE_DATA_TYPE, ACCUM_TYPE, DISTANCE_TYPE>(
+          info, smem, dist, curr_mp_row_val[iter], args);
+    }
+  }
+};
+
+template<int iter, typename DATA_TYPE, typename PROFILE_DATA_TYPE,
+typename ACCUM_TYPE, typename DISTANCE_TYPE, bool COMPUTE_ROWS,
+bool COMPUTE_COLS, SCAMPProfileType PROFILE_TYPE> struct do_row<iter,DATA_TYPE,PROFILE_DATA_TYPE,
+ACCUM_TYPE, DISTANCE_TYPE, COMPUTE_ROWS,
+COMPUTE_COLS,PROFILE_TYPE,RowAlgorithm::Pearson>
+{
+  __device__ inline FORCE_INLINE static void call(
     SCAMPThreadInfo<ACCUM_TYPE> &info, DISTANCE_TYPE distc[7],
     const DATA_TYPE inormc[7], const DATA_TYPE dfc[7], const DATA_TYPE dgc[7],
     const DATA_TYPE inormr[4], const DATA_TYPE dfr[4], const DATA_TYPE dgr[4],
     const float curr_mp_row_val[4], unsigned int idxc[7],
     SCAMPSmem<DATA_TYPE, PROFILE_DATA_TYPE, PROFILE_TYPE> smem,
-    OptionalArgs args) {
-  DISTANCE_TYPE dist[4];
+    OptionalArgs args)
+  {
+    DISTANCE_TYPE dist[4];
 
-  // Compute the correlation values for the current tile row
-  dist[0] = info.cov1 * inormc[iter] * inormr[iter];
-  dist[1] = info.cov2 * inormc[iter + 1] * inormr[iter];
-  dist[2] = info.cov3 * inormc[iter + 2] * inormr[iter];
-  dist[3] = info.cov4 * inormc[iter + 3] * inormr[iter];
+    dist[0] = info.cov1 * inormc[iter] * inormr[iter];
+    dist[1] = info.cov2 * inormc[iter + 1] * inormr[iter];
+    dist[2] = info.cov3 * inormc[iter + 2] * inormr[iter];
+    dist[3] = info.cov4 * inormc[iter + 3] * inormr[iter];
+    // Compute the next covariance values and update our registers for the next
+    // iteration
+    info.cov1 = info.cov1 + dfc[iter] * dgr[iter] + dgc[iter] * dfr[iter];
+    info.cov2 = info.cov2 + dfc[iter + 1] * dgr[iter] + dgc[iter + 1] * dfr[iter];
+    info.cov3 = info.cov3 + dfc[iter + 2] * dgr[iter] + dgc[iter + 2] * dfr[iter];
+    info.cov4 = info.cov4 + dfc[iter + 3] * dgr[iter] + dgc[iter + 3] * dfr[iter];
 
-  // Compute the next covariance values and update our registers for the next
-  // iteration
-  info.cov1 = info.cov1 + dfc[iter] * dgr[iter] + dgc[iter] * dfr[iter];
-  info.cov2 = info.cov2 + dfc[iter + 1] * dgr[iter] + dgc[iter + 1] * dfr[iter];
-  info.cov3 = info.cov3 + dfc[iter + 2] * dgr[iter] + dgc[iter + 2] * dfr[iter];
-  info.cov4 = info.cov4 + dfc[iter + 3] * dgr[iter] + dgc[iter + 3] * dfr[iter];
+    // Perform any profile-specific distance calculations
+    // Update the column best-so-far values
+    if (COMPUTE_COLS) {
+      merge_to_column<iter, DATA_TYPE, PROFILE_DATA_TYPE, ACCUM_TYPE,
+                      DISTANCE_TYPE>(info, smem, distc, dist, idxc, args);
+    }
 
-  // Perform any profile-specific distance calculations
-  // Update the column best-so-far values
-  if (COMPUTE_COLS) {
-    merge_to_column<iter, DATA_TYPE, PROFILE_DATA_TYPE, ACCUM_TYPE,
-                    DISTANCE_TYPE>(info, smem, distc, dist, idxc, args);
+    // Perform any updates for this tile row and commit to the shared-memory
+    // matrix profile
+    if (COMPUTE_ROWS) {
+      update_row<iter, DATA_TYPE, PROFILE_DATA_TYPE, ACCUM_TYPE, DISTANCE_TYPE>(
+          info, smem, dist, curr_mp_row_val[iter], args);
+    }
   }
-
-  // Perform any updates for this tile row and commit to the shared-memory
-  // matrix profile
-  if (COMPUTE_ROWS) {
-    update_row<iter, DATA_TYPE, PROFILE_DATA_TYPE, ACCUM_TYPE, DISTANCE_TYPE>(
-        info, smem, dist, curr_mp_row_val[iter], args);
-  }
-}
+};
 
 ///////////////////////////////////////////////////////////////////////////////
 // OPTIMIZED CODE PATH:
@@ -479,7 +600,7 @@ __device__ inline FORCE_INLINE void do_row(
 template <typename DATA_TYPE, typename VEC2_DATA_TYPE, typename VEC4_DATA_TYPE,
           typename ACCUM_TYPE, typename PROFILE_DATA_TYPE,
           typename DISTANCE_TYPE, bool COMPUTE_ROWS, bool COMPUTE_COLS,
-          SCAMPProfileType PROFILE_TYPE>
+          SCAMPProfileType PROFILE_TYPE, RowAlgorithm row_algo >
 void __device__
 do_iteration_fast(SCAMPThreadInfo<ACCUM_TYPE> &info,
                   SCAMPSmem<DATA_TYPE, PROFILE_DATA_TYPE, PROFILE_TYPE> &smem,
@@ -593,19 +714,19 @@ do_iteration_fast(SCAMPThreadInfo<ACCUM_TYPE> &info,
 
   // Generate and coalesce distances into profile
   do_row<0, DATA_TYPE, PROFILE_DATA_TYPE, ACCUM_TYPE, DISTANCE_TYPE,
-         COMPUTE_ROWS, COMPUTE_COLS, PROFILE_TYPE>(
+         COMPUTE_ROWS, COMPUTE_COLS, PROFILE_TYPE, row_algo>::call(
       info, distc, inormc, dfc, dgc, inormr, dfr, dgr, mp_row_check, idxc, smem,
       args);
   do_row<1, DATA_TYPE, PROFILE_DATA_TYPE, ACCUM_TYPE, DISTANCE_TYPE,
-         COMPUTE_ROWS, COMPUTE_COLS, PROFILE_TYPE>(
+         COMPUTE_ROWS, COMPUTE_COLS, PROFILE_TYPE, row_algo>::call(
       info, distc, inormc, dfc, dgc, inormr, dfr, dgr, mp_row_check, idxc, smem,
       args);
   do_row<2, DATA_TYPE, PROFILE_DATA_TYPE, ACCUM_TYPE, DISTANCE_TYPE,
-         COMPUTE_ROWS, COMPUTE_COLS, PROFILE_TYPE>(
+         COMPUTE_ROWS, COMPUTE_COLS, PROFILE_TYPE, row_algo>::call(
       info, distc, inormc, dfc, dgc, inormr, dfr, dgr, mp_row_check, idxc, smem,
       args);
   do_row<3, DATA_TYPE, PROFILE_DATA_TYPE, ACCUM_TYPE, DISTANCE_TYPE,
-         COMPUTE_ROWS, COMPUTE_COLS, PROFILE_TYPE>(
+         COMPUTE_ROWS, COMPUTE_COLS, PROFILE_TYPE, row_algo>::call(
       info, distc, inormc, dfc, dgc, inormr, dfr, dgr, mp_row_check, idxc, smem,
       args);
 
@@ -778,50 +899,188 @@ __device__ inline void reduce_row(
 
 template <typename DATA_TYPE, typename PROFILE_DATA_TYPE, typename ACCUM_TYPE,
           typename DISTANCE_TYPE, SCAMPProfileType PROFILE_TYPE,
-          bool COMPUTE_ROWS, bool COMPUTE_COLS>
-__device__ inline void do_row_edge(
-    SCAMPThreadInfo<ACCUM_TYPE> &info,
-    SCAMPSmem<DATA_TYPE, PROFILE_DATA_TYPE, PROFILE_TYPE> &smem, int n,
-    int diag, int num_diags, OptionalArgs &args) {
-  DISTANCE_TYPE dist_row = init_dist<DISTANCE_TYPE, PROFILE_TYPE>();
-  DISTANCE_TYPE dist[4];
-  int col = info.local_col;
-  int row = info.local_row;
-  uint32_t idx_row = 0;
-  DATA_TYPE inormr = smem.inorm_row[row];
-  DATA_TYPE dgr = smem.dg_row[row];
-  DATA_TYPE dfr = smem.df_row[row];
+          bool COMPUTE_ROWS, bool COMPUTE_COLS, RowAlgorithm row_algo> struct do_row_edge;
 
-  // Compute the next set of distances (row y)
-  dist[0] = info.cov1 * smem.inorm_col[col] * inormr;
-  dist[1] = info.cov2 * smem.inorm_col[col + 1] * inormr;
-  dist[2] = info.cov3 * smem.inorm_col[col + 2] * inormr;
-  dist[3] = info.cov4 * smem.inorm_col[col + 3] * inormr;
+template <typename DATA_TYPE, typename PROFILE_DATA_TYPE, typename ACCUM_TYPE,
+  typename DISTANCE_TYPE, SCAMPProfileType PROFILE_TYPE,
+  bool COMPUTE_ROWS, bool COMPUTE_COLS>  struct do_row_edge<DATA_TYPE,PROFILE_DATA_TYPE,ACCUM_TYPE,DISTANCE_TYPE,PROFILE_TYPE,COMPUTE_ROWS,COMPUTE_COLS,RowAlgorithm::Pearson>
+  {
+    __device__ inline static void call(
+        SCAMPThreadInfo<ACCUM_TYPE> &info,
+        SCAMPSmem<DATA_TYPE, PROFILE_DATA_TYPE, PROFILE_TYPE> &smem, int n,
+        int diag, int num_diags, OptionalArgs &args) {
+      DISTANCE_TYPE dist_row = init_dist<DISTANCE_TYPE, PROFILE_TYPE>();
+      DISTANCE_TYPE dist[4];
+      int col = info.local_col;
+      int row = info.local_row;
+      uint32_t idx_row = 0;
+      DATA_TYPE inormr = smem.inorm_row[row];
+      DATA_TYPE dgr = smem.dg_row[row];
+      DATA_TYPE dfr = smem.df_row[row];
 
-  // Update cov and compute the next distance values (row y)
-  info.cov1 = info.cov1 + smem.df_col[col] * dgr + smem.dg_col[col] * dfr;
-  info.cov2 =
-      info.cov2 + smem.df_col[col + 1] * dgr + smem.dg_col[col + 1] * dfr;
-  info.cov3 =
-      info.cov3 + smem.df_col[col + 2] * dgr + smem.dg_col[col + 2] * dfr;
-  info.cov4 =
-      info.cov4 + smem.df_col[col + 3] * dgr + smem.dg_col[col + 3] * dfr;
+      // Compute the next set of distances (row y)
+      dist[0] = info.cov1 * smem.inorm_col[col] * inormr;
+      dist[1] = info.cov2 * smem.inorm_col[col + 1] * inormr;
+      dist[2] = info.cov3 * smem.inorm_col[col + 2] * inormr;
+      dist[3] = info.cov4 * smem.inorm_col[col + 3] * inormr;
 
-  reduce_edge<0, DATA_TYPE, PROFILE_DATA_TYPE, ACCUM_TYPE, DISTANCE_TYPE,
-              COMPUTE_ROWS, COMPUTE_COLS>(smem, info, dist, dist_row, idx_row,
-                                          diag, num_diags, n, args);
-  reduce_edge<1, DATA_TYPE, PROFILE_DATA_TYPE, ACCUM_TYPE, DISTANCE_TYPE,
-              COMPUTE_ROWS, COMPUTE_COLS>(smem, info, dist, dist_row, idx_row,
-                                          diag, num_diags, n, args);
-  reduce_edge<2, DATA_TYPE, PROFILE_DATA_TYPE, ACCUM_TYPE, DISTANCE_TYPE,
-              COMPUTE_ROWS, COMPUTE_COLS>(smem, info, dist, dist_row, idx_row,
-                                          diag, num_diags, n, args);
-  reduce_edge<3, DATA_TYPE, PROFILE_DATA_TYPE, ACCUM_TYPE, DISTANCE_TYPE,
-              COMPUTE_ROWS, COMPUTE_COLS>(smem, info, dist, dist_row, idx_row,
-                                          diag, num_diags, n, args);
+      // Update cov and compute the next distance values (row y)
+      info.cov1 = info.cov1 + smem.df_col[col] * dgr + smem.dg_col[col] * dfr;
+      info.cov2 =
+          info.cov2 + smem.df_col[col + 1] * dgr + smem.dg_col[col + 1] * dfr;
+      info.cov3 =
+          info.cov3 + smem.df_col[col + 2] * dgr + smem.dg_col[col + 2] * dfr;
+      info.cov4 =
+          info.cov4 + smem.df_col[col + 3] * dgr + smem.dg_col[col + 3] * dfr;
 
-  if (COMPUTE_ROWS) {
-    reduce_row<DATA_TYPE, PROFILE_DATA_TYPE, DISTANCE_TYPE>(smem, row, dist_row,
-                                                            idx_row);
+      reduce_edge<0, DATA_TYPE, PROFILE_DATA_TYPE, ACCUM_TYPE, DISTANCE_TYPE,
+                  COMPUTE_ROWS, COMPUTE_COLS>(smem, info, dist, dist_row, idx_row,
+                                              diag, num_diags, n, args);
+      reduce_edge<1, DATA_TYPE, PROFILE_DATA_TYPE, ACCUM_TYPE, DISTANCE_TYPE,
+                  COMPUTE_ROWS, COMPUTE_COLS>(smem, info, dist, dist_row, idx_row,
+                                              diag, num_diags, n, args);
+      reduce_edge<2, DATA_TYPE, PROFILE_DATA_TYPE, ACCUM_TYPE, DISTANCE_TYPE,
+                  COMPUTE_ROWS, COMPUTE_COLS>(smem, info, dist, dist_row, idx_row,
+                                              diag, num_diags, n, args);
+      reduce_edge<3, DATA_TYPE, PROFILE_DATA_TYPE, ACCUM_TYPE, DISTANCE_TYPE,
+                  COMPUTE_ROWS, COMPUTE_COLS>(smem, info, dist, dist_row, idx_row,
+                                              diag, num_diags, n, args);
+
+      if (COMPUTE_ROWS) {
+        reduce_row<DATA_TYPE, PROFILE_DATA_TYPE, DISTANCE_TYPE>(smem, row, dist_row,
+                                                                idx_row);
+      }
+    }
+
+  };
+
+template <typename PROFILE_DATA_TYPE, typename ACCUM_TYPE,
+  typename DISTANCE_TYPE, SCAMPProfileType PROFILE_TYPE, bool COMPUTE_ROWS, bool COMPUTE_COLS>  
+struct do_row_edge<float,PROFILE_DATA_TYPE,ACCUM_TYPE,DISTANCE_TYPE,PROFILE_TYPE,COMPUTE_ROWS,COMPUTE_COLS,RowAlgorithm::FlatNoise>
+{
+  __device__ inline static void call(
+      SCAMPThreadInfo<ACCUM_TYPE> &info,
+      SCAMPSmem<float, PROFILE_DATA_TYPE, PROFILE_TYPE> &smem, int n,
+      int diag, int num_diags, OptionalArgs &args) {
+    DISTANCE_TYPE dist_row = init_dist<DISTANCE_TYPE, PROFILE_TYPE>();
+    DISTANCE_TYPE dist[4];
+    int col = info.local_col;
+    int row = info.local_row;
+    uint32_t idx_row = 0;
+    float inormr = smem.inorm_row[row];
+    float dgr = smem.dg_row[row];
+    float dfr = smem.df_row[row];
+    float noise_var_k = args.noise_var_k;
+    const float mins[4]= {
+      fminf(smem.inorm_col[col],inormr),
+      fminf(smem.inorm_col[col + 1],inormr),
+      fminf(smem.inorm_col[col + 2],inormr),
+      fminf(smem.inorm_col[col + 3],inormr)
+    };
+    const float mins2[4] = {
+      mins[0] * mins[0],
+      mins[1] * mins[1],
+      mins[2] * mins[2],
+      mins[3] * mins[3]
+    };
+
+    // Compute the next set of distances (row y)
+    dist[0] = info.cov1 * smem.inorm_col[col] * inormr + noise_var_k * mins2[0];
+    dist[1] = info.cov2 * smem.inorm_col[col + 1] * inormr + noise_var_k * mins2[1];
+    dist[2] = info.cov3 * smem.inorm_col[col + 2] * inormr + noise_var_k * mins2[2];
+    dist[3] = info.cov4 * smem.inorm_col[col + 3] * inormr + noise_var_k * mins2[3];
+
+    // Update cov and compute the next distance values (row y)
+    info.cov1 = info.cov1 + smem.df_col[col] * dgr + smem.dg_col[col] * dfr;
+    info.cov2 =
+        info.cov2 + smem.df_col[col + 1] * dgr + smem.dg_col[col + 1] * dfr;
+    info.cov3 =
+        info.cov3 + smem.df_col[col + 2] * dgr + smem.dg_col[col + 2] * dfr;
+    info.cov4 =
+        info.cov4 + smem.df_col[col + 3] * dgr + smem.dg_col[col + 3] * dfr;
+
+    reduce_edge<0, float, PROFILE_DATA_TYPE, ACCUM_TYPE, DISTANCE_TYPE,
+                COMPUTE_ROWS, COMPUTE_COLS>(smem, info, dist, dist_row, idx_row,
+                                            diag, num_diags, n, args);
+    reduce_edge<1, float, PROFILE_DATA_TYPE, ACCUM_TYPE, DISTANCE_TYPE,
+                COMPUTE_ROWS, COMPUTE_COLS>(smem, info, dist, dist_row, idx_row,
+                                            diag, num_diags, n, args);
+    reduce_edge<2, float, PROFILE_DATA_TYPE, ACCUM_TYPE, DISTANCE_TYPE,
+                COMPUTE_ROWS, COMPUTE_COLS>(smem, info, dist, dist_row, idx_row,
+                                            diag, num_diags, n, args);
+    reduce_edge<3, float, PROFILE_DATA_TYPE, ACCUM_TYPE, DISTANCE_TYPE,
+                COMPUTE_ROWS, COMPUTE_COLS>(smem, info, dist, dist_row, idx_row,
+                                            diag, num_diags, n, args);
+
+    if (COMPUTE_ROWS) {
+      reduce_row<float, PROFILE_DATA_TYPE, DISTANCE_TYPE>(smem, row, dist_row,
+                                                              idx_row);
+    }
   }
-}
+};
+
+template <typename PROFILE_DATA_TYPE, typename ACCUM_TYPE,
+  typename DISTANCE_TYPE, SCAMPProfileType PROFILE_TYPE, bool COMPUTE_ROWS, bool COMPUTE_COLS>  
+struct do_row_edge<double,PROFILE_DATA_TYPE,ACCUM_TYPE,DISTANCE_TYPE,PROFILE_TYPE,COMPUTE_ROWS,COMPUTE_COLS,RowAlgorithm::FlatNoise>
+{
+  __device__ inline static void call(
+      SCAMPThreadInfo<ACCUM_TYPE> &info,
+      SCAMPSmem<double, PROFILE_DATA_TYPE, PROFILE_TYPE> &smem, int n,
+      int diag, int num_diags, OptionalArgs &args) {
+    DISTANCE_TYPE dist_row = init_dist<DISTANCE_TYPE, PROFILE_TYPE>();
+    DISTANCE_TYPE dist[4];
+    int col = info.local_col;
+    int row = info.local_row;
+    uint32_t idx_row = 0;
+    double inormr = smem.inorm_row[row];
+    double dgr = smem.dg_row[row];
+    double dfr = smem.df_row[row];
+    double noise_var_k = args.noise_var_k;
+    const double mins[4]= {
+      fmin(smem.inorm_col[col],inormr),
+      fmin(smem.inorm_col[col + 1],inormr),
+      fmin(smem.inorm_col[col + 2],inormr),
+      fmin(smem.inorm_col[col + 3],inormr)
+    };
+    const double mins2[4] = {
+      mins[0] * mins[0],
+      mins[1] * mins[1],
+      mins[2] * mins[2],
+      mins[3] * mins[3]
+    };
+
+    // Compute the next set of distances (row y)
+    dist[0] = info.cov1 * smem.inorm_col[col] * inormr + noise_var_k * mins2[0];
+    dist[1] = info.cov2 * smem.inorm_col[col + 1] * inormr + noise_var_k * mins2[1];
+    dist[2] = info.cov3 * smem.inorm_col[col + 2] * inormr + noise_var_k * mins2[2];
+    dist[3] = info.cov4 * smem.inorm_col[col + 3] * inormr + noise_var_k * mins2[3];
+
+    // Update cov and compute the next distance values (row y)
+    info.cov1 = info.cov1 + smem.df_col[col] * dgr + smem.dg_col[col] * dfr;
+    info.cov2 =
+        info.cov2 + smem.df_col[col + 1] * dgr + smem.dg_col[col + 1] * dfr;
+    info.cov3 =
+        info.cov3 + smem.df_col[col + 2] * dgr + smem.dg_col[col + 2] * dfr;
+    info.cov4 =
+        info.cov4 + smem.df_col[col + 3] * dgr + smem.dg_col[col + 3] * dfr;
+
+    reduce_edge<0, double, PROFILE_DATA_TYPE, ACCUM_TYPE, DISTANCE_TYPE,
+                COMPUTE_ROWS, COMPUTE_COLS>(smem, info, dist, dist_row, idx_row,
+                                            diag, num_diags, n, args);
+    reduce_edge<1, double, PROFILE_DATA_TYPE, ACCUM_TYPE, DISTANCE_TYPE,
+                COMPUTE_ROWS, COMPUTE_COLS>(smem, info, dist, dist_row, idx_row,
+                                            diag, num_diags, n, args);
+    reduce_edge<2, double, PROFILE_DATA_TYPE, ACCUM_TYPE, DISTANCE_TYPE,
+                COMPUTE_ROWS, COMPUTE_COLS>(smem, info, dist, dist_row, idx_row,
+                                            diag, num_diags, n, args);
+    reduce_edge<3, double, PROFILE_DATA_TYPE, ACCUM_TYPE, DISTANCE_TYPE,
+                COMPUTE_ROWS, COMPUTE_COLS>(smem, info, dist, dist_row, idx_row,
+                                            diag, num_diags, n, args);
+
+    if (COMPUTE_ROWS) {
+      reduce_row<double, PROFILE_DATA_TYPE, DISTANCE_TYPE>(smem, row, dist_row,
+                                                              idx_row);
+    }
+  }
+};
+
