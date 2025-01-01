@@ -57,7 +57,7 @@ OpInfo::OpInfo(size_t Asize, size_t Bsize, size_t window_sz,
   }
   auto maxSize = std::max(Asize, Bsize);
   max_tile_ts_size = maxSize / (num_workers);
-
+  opt_args.noise_var_k = noise_var_k;
   if (max_tile_ts_size > max_tile_size) {
     max_tile_ts_size = max_tile_size;
   }

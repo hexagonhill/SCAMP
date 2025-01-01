@@ -23,7 +23,7 @@ template <typename DATA_TYPE, typename VEC2_DATA_TYPE, typename VEC4_DATA_TYPE,
           typename ACCUM_TYPE, typename PROFILE_OUTPUT_TYPE,
           typename PROFILE_DATA_TYPE, typename DISTANCE_TYPE, bool COMPUTE_ROWS,
           bool COMPUTE_COLS, SCAMPProfileType PROFILE_TYPE, int blocks_per_sm,
-          int tile_height, int BLOCKSZ>
+          int tile_height, int BLOCKSZ, RowAlgorithm row_algo>
 __global__ void __launch_bounds__(BLOCKSZ, blocks_per_sm)
     do_tile(SCAMPKernelInputArgs<double> args, PROFILE_OUTPUT_TYPE *profile_A,
             PROFILE_OUTPUT_TYPE *profile_B) {
@@ -109,7 +109,7 @@ __global__ void __launch_bounds__(BLOCKSZ, blocks_per_sm)
       while (thread_info.local_row < tile_height) {
         do_iteration_fast<DATA_TYPE, VEC2_DATA_TYPE, VEC4_DATA_TYPE, ACCUM_TYPE,
                           PROFILE_DATA_TYPE, DISTANCE_TYPE, COMPUTE_ROWS,
-                          COMPUTE_COLS, PROFILE_TYPE>(thread_info, smem,
+                          COMPUTE_COLS, PROFILE_TYPE,row_algo>(thread_info, smem,
                                                       args.opt);
       }
 
@@ -119,7 +119,7 @@ __global__ void __launch_bounds__(BLOCKSZ, blocks_per_sm)
              thread_info.global_row < args.n_y &&
              thread_info.local_row < tile_height) {
         do_row_edge<DATA_TYPE, PROFILE_DATA_TYPE, ACCUM_TYPE, DISTANCE_TYPE,
-                    PROFILE_TYPE, COMPUTE_ROWS, COMPUTE_COLS>(
+                    PROFILE_TYPE, COMPUTE_ROWS, COMPUTE_COLS, row_algo>::call(
             thread_info, smem, args.n_x, start_diag, num_diags, args.opt);
         ++thread_info.global_col;
         ++thread_info.global_row;
@@ -174,7 +174,7 @@ SCAMPError_t LaunchDoTile(SCAMPKernelInputArgs<double> args,
                           PROFILE_OUTPUT_TYPE *profile_B,
                           SCAMPPrecisionType fp_type, bool computing_rows,
                           bool computing_cols, uint64_t blocksz,
-                          uint64_t num_blocks, uint64_t smem, cudaStream_t s) {
+                          uint64_t num_blocks, uint64_t smem, cudaStream_t s,const RowAlgorithm row_algo) {
   dim3 block(blocksz, 1, 1);
   dim3 grid(num_blocks, 1, 1);
   if (computing_rows && computing_cols) {
@@ -183,23 +183,32 @@ SCAMPError_t LaunchDoTile(SCAMPKernelInputArgs<double> args,
     switch (fp_type) {
       case PRECISION_ULTRA:
       case PRECISION_DOUBLE: {
-        do_tile<double, double2, double4, double, PROFILE_OUTPUT_TYPE,
+        (row_algo == RowAlgorithm::FlatNoise ? do_tile<double, double2, double4, double, PROFILE_OUTPUT_TYPE,
                 PROFILE_DATA_TYPE, DISTANCE_TYPE, COMPUTE_ROWS, COMPUTE_COLS,
-                PROFILE_TYPE, BLOCKSPERSM, TILE_HEIGHT_DP, BLOCKSZ_DP>
+                PROFILE_TYPE, BLOCKSPERSM, TILE_HEIGHT_DP, BLOCKSZ_DP,RowAlgorithm::FlatNoise> : 
+                do_tile<double, double2, double4, double, PROFILE_OUTPUT_TYPE,
+                PROFILE_DATA_TYPE, DISTANCE_TYPE, COMPUTE_ROWS, COMPUTE_COLS,
+                PROFILE_TYPE, BLOCKSPERSM, TILE_HEIGHT_DP, BLOCKSZ_DP,RowAlgorithm::Pearson>)
             <<<grid, block, smem, s>>>(args, profile_A, profile_B);
         break;
       }
       case PRECISION_MIXED: {
-        do_tile<float, float2, float4, double, PROFILE_OUTPUT_TYPE,
+        (row_algo == RowAlgorithm::FlatNoise ? do_tile<float, float2, float4, double, PROFILE_OUTPUT_TYPE,
                 PROFILE_DATA_TYPE, DISTANCE_TYPE, COMPUTE_ROWS, COMPUTE_COLS,
-                PROFILE_TYPE, BLOCKSPERSM, TILE_HEIGHT_SP, BLOCKSZ_SP>
+                PROFILE_TYPE, BLOCKSPERSM, TILE_HEIGHT_SP, BLOCKSZ_SP,RowAlgorithm::FlatNoise> :
+                do_tile<float, float2, float4, double, PROFILE_OUTPUT_TYPE,
+                PROFILE_DATA_TYPE, DISTANCE_TYPE, COMPUTE_ROWS, COMPUTE_COLS,
+                PROFILE_TYPE, BLOCKSPERSM, TILE_HEIGHT_SP, BLOCKSZ_SP,RowAlgorithm::Pearson>)
             <<<grid, block, smem, s>>>(args, profile_A, profile_B);
         break;
       }
       case PRECISION_SINGLE: {
-        do_tile<float, float2, float4, float, PROFILE_OUTPUT_TYPE,
+        (row_algo == RowAlgorithm::FlatNoise ? do_tile<float, float2, float4, float, PROFILE_OUTPUT_TYPE,
                 PROFILE_DATA_TYPE, DISTANCE_TYPE, COMPUTE_ROWS, COMPUTE_COLS,
-                PROFILE_TYPE, BLOCKSPERSM, TILE_HEIGHT_SP, BLOCKSZ_SP>
+                PROFILE_TYPE, BLOCKSPERSM, TILE_HEIGHT_SP, BLOCKSZ_SP,RowAlgorithm::FlatNoise> : 
+                do_tile<float, float2, float4, float, PROFILE_OUTPUT_TYPE,
+                PROFILE_DATA_TYPE, DISTANCE_TYPE, COMPUTE_ROWS, COMPUTE_COLS,
+                PROFILE_TYPE, BLOCKSPERSM, TILE_HEIGHT_SP, BLOCKSZ_SP,RowAlgorithm::Pearson>)
             <<<grid, block, smem, s>>>(args, profile_A, profile_B);
         break;
       }
@@ -214,23 +223,32 @@ SCAMPError_t LaunchDoTile(SCAMPKernelInputArgs<double> args,
     switch (fp_type) {
       case PRECISION_ULTRA:
       case PRECISION_DOUBLE: {
-        do_tile<double, double2, double4, double, PROFILE_OUTPUT_TYPE,
+        (row_algo == RowAlgorithm::FlatNoise ? do_tile<double, double2, double4, double, PROFILE_OUTPUT_TYPE,
                 PROFILE_DATA_TYPE, DISTANCE_TYPE, COMPUTE_ROWS, COMPUTE_COLS,
-                PROFILE_TYPE, BLOCKSPERSM, TILE_HEIGHT_DP, BLOCKSZ_DP>
+                PROFILE_TYPE, BLOCKSPERSM, TILE_HEIGHT_DP, BLOCKSZ_DP,RowAlgorithm::FlatNoise> : 
+                do_tile<double, double2, double4, double, PROFILE_OUTPUT_TYPE,
+                PROFILE_DATA_TYPE, DISTANCE_TYPE, COMPUTE_ROWS, COMPUTE_COLS,
+                PROFILE_TYPE, BLOCKSPERSM, TILE_HEIGHT_DP, BLOCKSZ_DP,RowAlgorithm::Pearson>)
             <<<grid, block, smem, s>>>(args, profile_A, profile_B);
         break;
       }
       case PRECISION_MIXED: {
-        do_tile<float, float2, float4, double, PROFILE_OUTPUT_TYPE,
+        (row_algo == RowAlgorithm::FlatNoise ? do_tile<float, float2, float4, double, PROFILE_OUTPUT_TYPE,
                 PROFILE_DATA_TYPE, DISTANCE_TYPE, COMPUTE_ROWS, COMPUTE_COLS,
-                PROFILE_TYPE, BLOCKSPERSM, TILE_HEIGHT_SP, BLOCKSZ_SP>
+                PROFILE_TYPE, BLOCKSPERSM, TILE_HEIGHT_SP, BLOCKSZ_SP,RowAlgorithm::FlatNoise> :
+                do_tile<float, float2, float4, double, PROFILE_OUTPUT_TYPE,
+                PROFILE_DATA_TYPE, DISTANCE_TYPE, COMPUTE_ROWS, COMPUTE_COLS,
+                PROFILE_TYPE, BLOCKSPERSM, TILE_HEIGHT_SP, BLOCKSZ_SP,RowAlgorithm::Pearson> )
             <<<grid, block, smem, s>>>(args, profile_A, profile_B);
         break;
       }
       case PRECISION_SINGLE: {
-        do_tile<float, float2, float4, float, PROFILE_OUTPUT_TYPE,
+        (row_algo == RowAlgorithm::FlatNoise ? do_tile<float, float2, float4, float, PROFILE_OUTPUT_TYPE,
                 PROFILE_DATA_TYPE, DISTANCE_TYPE, COMPUTE_ROWS, COMPUTE_COLS,
-                PROFILE_TYPE, BLOCKSPERSM, TILE_HEIGHT_SP, BLOCKSZ_SP>
+                PROFILE_TYPE, BLOCKSPERSM, TILE_HEIGHT_SP, BLOCKSZ_SP,RowAlgorithm::FlatNoise> :
+                do_tile<float, float2, float4, float, PROFILE_OUTPUT_TYPE,
+                PROFILE_DATA_TYPE, DISTANCE_TYPE, COMPUTE_ROWS, COMPUTE_COLS,
+                PROFILE_TYPE, BLOCKSPERSM, TILE_HEIGHT_SP, BLOCKSZ_SP,RowAlgorithm::Pearson>)
             <<<grid, block, smem, s>>>(args, profile_A, profile_B);
         break;
       }
@@ -243,23 +261,32 @@ SCAMPError_t LaunchDoTile(SCAMPKernelInputArgs<double> args,
     switch (fp_type) {
       case PRECISION_ULTRA:
       case PRECISION_DOUBLE: {
-        do_tile<double, double2, double4, double, PROFILE_OUTPUT_TYPE,
+        (row_algo == RowAlgorithm::FlatNoise ? do_tile<double, double2, double4, double, PROFILE_OUTPUT_TYPE,
                 PROFILE_DATA_TYPE, DISTANCE_TYPE, COMPUTE_ROWS, COMPUTE_COLS,
-                PROFILE_TYPE, BLOCKSPERSM, TILE_HEIGHT_DP, BLOCKSZ_DP>
+                PROFILE_TYPE, BLOCKSPERSM, TILE_HEIGHT_DP, BLOCKSZ_DP,RowAlgorithm::FlatNoise> :
+                do_tile<double, double2, double4, double, PROFILE_OUTPUT_TYPE,
+                PROFILE_DATA_TYPE, DISTANCE_TYPE, COMPUTE_ROWS, COMPUTE_COLS,
+                PROFILE_TYPE, BLOCKSPERSM, TILE_HEIGHT_DP, BLOCKSZ_DP,RowAlgorithm::Pearson>)
             <<<grid, block, smem, s>>>(args, profile_A, profile_B);
         break;
       }
       case PRECISION_MIXED: {
-        do_tile<float, float2, float4, double, PROFILE_OUTPUT_TYPE,
+        (row_algo == RowAlgorithm::FlatNoise ? do_tile<float, float2, float4, double, PROFILE_OUTPUT_TYPE,
                 PROFILE_DATA_TYPE, DISTANCE_TYPE, COMPUTE_ROWS, COMPUTE_COLS,
-                PROFILE_TYPE, BLOCKSPERSM, TILE_HEIGHT_SP, BLOCKSZ_SP>
+                PROFILE_TYPE, BLOCKSPERSM, TILE_HEIGHT_SP, BLOCKSZ_SP,RowAlgorithm::FlatNoise> :
+                do_tile<float, float2, float4, double, PROFILE_OUTPUT_TYPE,
+                PROFILE_DATA_TYPE, DISTANCE_TYPE, COMPUTE_ROWS, COMPUTE_COLS,
+                PROFILE_TYPE, BLOCKSPERSM, TILE_HEIGHT_SP, BLOCKSZ_SP,RowAlgorithm::Pearson>)
             <<<grid, block, smem, s>>>(args, profile_A, profile_B);
         break;
       }
       case PRECISION_SINGLE: {
-        do_tile<float, float2, float4, float, PROFILE_OUTPUT_TYPE,
+        (row_algo == RowAlgorithm::FlatNoise ? do_tile<float, float2, float4, float, PROFILE_OUTPUT_TYPE,
                 PROFILE_DATA_TYPE, DISTANCE_TYPE, COMPUTE_ROWS, COMPUTE_COLS,
-                PROFILE_TYPE, BLOCKSPERSM, TILE_HEIGHT_SP, BLOCKSZ_SP>
+                PROFILE_TYPE, BLOCKSPERSM, TILE_HEIGHT_SP, BLOCKSZ_SP,RowAlgorithm::FlatNoise> : 
+                do_tile<float, float2, float4, float, PROFILE_OUTPUT_TYPE,
+                PROFILE_DATA_TYPE, DISTANCE_TYPE, COMPUTE_ROWS, COMPUTE_COLS,
+                PROFILE_TYPE, BLOCKSPERSM, TILE_HEIGHT_SP, BLOCKSZ_SP,RowAlgorithm::Pearson>)
             <<<grid, block, smem, s>>>(args, profile_A, profile_B);
         break;
       }
@@ -274,7 +301,7 @@ SCAMPError_t LaunchDoTile(SCAMPKernelInputArgs<double> args,
 SCAMPError_t compute_gpu_resources_and_launch(SCAMPKernelInputArgs<double> args,
                                               Tile *t, void *profile_a,
                                               void *profile_b, bool do_rows,
-                                              bool do_cols) {
+                                              bool do_cols, const RowAlgorithm row_algo) {
   int exclusion_total = args.exclusion_lower + args.exclusion_upper;
   uint64_t blocksz = get_blocksz(t);
   uint64_t num_workers = ceil((args.n_x - exclusion_total) /
@@ -293,30 +320,30 @@ SCAMPError_t compute_gpu_resources_and_launch(SCAMPKernelInputArgs<double> args,
                             BLOCKSPERSM>(
             args, reinterpret_cast<double *>(profile_a),
             reinterpret_cast<double *>(profile_b), t->info()->fp_type, do_rows,
-            do_cols, blocksz, num_blocks, smem, t->get_stream());
+            do_cols, blocksz, num_blocks, smem, t->get_stream(),row_algo);
       case PROFILE_TYPE_1NN_INDEX:
         return LaunchDoTile<uint64_t, uint64_t, float, PROFILE_TYPE_1NN_INDEX,
                             BLOCKSPERSM>(
             args, reinterpret_cast<uint64_t *>(profile_a),
             reinterpret_cast<uint64_t *>(profile_b), t->info()->fp_type,
-            do_rows, do_cols, blocksz, num_blocks, smem, t->get_stream());
+            do_rows, do_cols, blocksz, num_blocks, smem, t->get_stream(),row_algo);
       case PROFILE_TYPE_1NN:
         return LaunchDoTile<float, float, float, PROFILE_TYPE_1NN, BLOCKSPERSM>(
             args, reinterpret_cast<float *>(profile_a),
             reinterpret_cast<float *>(profile_b), t->info()->fp_type, do_rows,
-            do_cols, blocksz, num_blocks, smem, t->get_stream());
+            do_cols, blocksz, num_blocks, smem, t->get_stream(),row_algo);
       case PROFILE_TYPE_APPROX_ALL_NEIGHBORS:
         return LaunchDoTile<SCAMPmatch, uint64_t, float,
                             PROFILE_TYPE_APPROX_ALL_NEIGHBORS, BLOCKSPERSM>(
             args, reinterpret_cast<SCAMPmatch *>(profile_a),
             reinterpret_cast<SCAMPmatch *>(profile_b), t->info()->fp_type,
-            do_rows, do_cols, blocksz, num_blocks, smem, t->get_stream());
+            do_rows, do_cols, blocksz, num_blocks, smem, t->get_stream(),row_algo);
       case PROFILE_TYPE_MATRIX_SUMMARY:
         return LaunchDoTile<float, uint64_t, float, PROFILE_TYPE_MATRIX_SUMMARY,
                             BLOCKSPERSM>(
             args, reinterpret_cast<float *>(profile_a),
             reinterpret_cast<float *>(profile_b), t->info()->fp_type, do_rows,
-            do_cols, blocksz, num_blocks, smem, t->get_stream());
+            do_cols, blocksz, num_blocks, smem, t->get_stream(),row_algo);
       default:
         return SCAMP_FUNCTIONALITY_UNIMPLEMENTED;
     }
@@ -328,28 +355,28 @@ SCAMPError_t gpu_kernel_self_join_upper(Tile *t) {
   SCAMPKernelInputArgs<double> tile_args(t, false, false);
   return compute_gpu_resources_and_launch(
       tile_args, t, t->profile_a(), t->profile_b(), t->info()->computing_rows,
-      t->info()->computing_cols);
+      t->info()->computing_cols,t->info()->row_algorithm);
 }
 
 SCAMPError_t gpu_kernel_self_join_lower(Tile *t) {
   SCAMPKernelInputArgs<double> tile_args(t, true, false);
   return compute_gpu_resources_and_launch(
       tile_args, t, t->profile_b(), t->profile_a(), t->info()->computing_cols,
-      t->info()->computing_rows);
+      t->info()->computing_rows,t->info()->row_algorithm);
 }
 
 SCAMPError_t gpu_kernel_ab_join_upper(Tile *t) {
   SCAMPKernelInputArgs<double> tile_args(t, false, true);
   return compute_gpu_resources_and_launch(
       tile_args, t, t->profile_a(), t->profile_b(), t->info()->computing_rows,
-      t->info()->computing_cols);
+      t->info()->computing_cols,t->info()->row_algorithm);
 }
 
 SCAMPError_t gpu_kernel_ab_join_lower(Tile *t) {
   SCAMPKernelInputArgs<double> tile_args(t, true, true);
   return compute_gpu_resources_and_launch(
       tile_args, t, t->profile_b(), t->profile_a(), t->info()->computing_cols,
-      t->info()->computing_rows);
+      t->info()->computing_rows,t->info()->row_algorithm);
 }
 
 void match_gpu_sort(SCAMPmatch *matches, int64_t len, cudaStream_t stream) {
