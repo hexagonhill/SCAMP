@@ -1,0 +1,2 @@
+option('cpu_only', type: 'boolean', value: false,
+       description: 'Force the use of CPU computaions only')

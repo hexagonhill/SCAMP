@@ -35,7 +35,7 @@ scampDep = [
 cppArgs = ['-march=native']
 libs = []
 
-hasCuda = add_languages('cuda', required: false)
+hasCuda = add_languages('cuda', required: false) and not get_option('cpu_only')
 
 if not hasCuda
   message('Compiling against CPU')
