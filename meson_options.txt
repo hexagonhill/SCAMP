@@ -1,2 +1,4 @@
 option('cpu_only', type: 'boolean', value: false,
        description: 'Force the use of CPU computaions only')
+option('nv_compute_name', type: 'string', value: 'All',
+       description: 'Cuda Compute Capability')
