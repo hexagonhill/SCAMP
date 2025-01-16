@@ -81,7 +81,7 @@ else
 
   cppArgs += ['-D_HAS_CUDA_','-mno-outline-atomics']
 
-  cudaArgs = cuda.nvcc_arch_flags(nvcc,'All')
+  cudaArgs = cuda.nvcc_arch_flags(nvcc,get_option('nv_compute_name'))
   cudaArgs += ['-D_HAS_CUDA_']
 
   cudaToolkitDep = dependency('CUDAToolkit', method : 'cmake', modules: ['CUDA::cufft','CUDA::cudart'] )
